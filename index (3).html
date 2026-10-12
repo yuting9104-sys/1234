@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b1020" />
+  <title>文字地下城｜回合制冒險</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #141c30;
+      --panel-border: #2a3650;
+      --ink: #eef4ff;
+      --muted: #9baac3;
+      --accent: #67e8d0;
+      --gold: #fcd26c;
+      --danger: #ff798b;
+      --cell: clamp(14px, 4.35vw, 30px);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 26px 16px 40px;
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+        "Noto Sans TC", "Microsoft JhengHei", monospace;
+      background:
+        radial-gradient(circle at 14% 3%, #1d3555 0, transparent 35%),
+        radial-gradient(circle at 92% 70%, #25304f 0, transparent 36%),
+        var(--bg);
+    }
+
+    button { font: inherit; }
+
+    .app { max-width: 1050px; margin: 0 auto; }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .18em;
+    }
+    h1 { margin: 0; font-size: clamp(25px, 4vw, 38px); letter-spacing: .04em; }
+    .subtitle { margin: 9px 0 24px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 282px; gap: 18px; align-items: start; }
+    .panel {
+      min-width: 0;
+      background: rgba(20, 28, 48, .96);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      box-shadow: 0 16px 45px #0003;
+    }
+    .game-panel { padding: 20px; }
+    .sidebar { display: grid; gap: 18px; }
+    .side-panel { padding: 20px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .section-title { margin: 0; font-size: 15px; font-weight: 800; }
+    .small-tag {
+      padding: 6px 9px;
+      border: 1px solid #355d63;
+      border-radius: 99px;
+      color: var(--accent);
+      background: #142e36;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .stat { padding: 12px 10px; border: 1px solid #293651; border-radius: 11px; background: #0d1629; }
+    .stat-label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .stat-value { display: block; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .health { color: var(--danger); letter-spacing: -2px; white-space: nowrap; }
+    .hp-counter { display: block; margin-top: 5px; color: #bac7da; font-size: 12px; font-weight: 700; }
+    .stat.hurt { border-color: var(--danger); background: #432035; }
+    .stat.healed { border-color: #55d8c8; background: #13443c; }
+    .floor-progress { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .floor-dot { flex: 1; border: 1px solid #36435d; border-radius: 9px; padding: 7px 2px; color: #92a2bd; background: #10182a; font-size: 12px; font-weight: 750; text-align: center; }
+    .floor-dot.active { border-color: #4bd5c0; color: #adffee; background: #143c3b; }
+    .floor-dot.done { border-color: #786639; color: #eed08c; background: #3b341e; }
+
+    .board-outer {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      padding: 16px 10px;
+      border-radius: 13px;
+      border: 1px solid #24334b;
+      background: #090e1b;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(17, var(--cell));
+      gap: 2px;
+      width: max-content;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .tile {
+      display: grid;
+      place-items: center;
+      width: var(--cell);
+      height: var(--cell);
+      border-radius: 4px;
+      background: #111a2b;
+      color: #52637c;
+      font-size: calc(var(--cell) * .62);
+      font-weight: 900;
+      line-height: 1;
+    }
+    .tile.wall { background: #293951; color: #7186a6; }
+    .tile.floor { color: #35455e; }
+    .tile.player {
+      background: #144940;
+      color: #92ffe1;
+      box-shadow: inset 0 0 0 1px #389b85;
+      animation: rainbowPlayer 2.4s linear infinite;
+    }
+    .tile.enemy { background: #542437; color: #ff9bad; }
+    .tile.spring { background: #164760; color: #8beeff; box-shadow: inset 0 0 0 1px #3a94bb; animation: springGlow 2.2s ease-in-out infinite alternate; }
+    .tile.stairs { background: #37365c; color: #d6c5ff; animation: stairsGlow 1.5s ease-in-out infinite alternate; }
+    @keyframes springGlow { to { box-shadow: inset 0 0 0 1px #67dcff, 0 0 12px #37b8f68a; } }
+    @keyframes stairsGlow { to { box-shadow: inset 0 0 0 1px #bdadff, 0 0 10px #9b75f66c; } }
+    .tile.exit { background: #56451e; color: #ffe08b; animation: glow 1.7s ease-in-out infinite alternate; }
+    @keyframes glow { to { box-shadow: inset 0 0 0 1px #d1a544, 0 0 12px #ffca5140; } }
+    @keyframes rainbowPlayer {
+      0% { background: #ff4d6d; color: #fff1f5; box-shadow: inset 0 0 0 1px #ff93a6, 0 0 10px #ff4d6d66; }
+      16% { background: #ff8c42; color: #fff7ea; box-shadow: inset 0 0 0 1px #ffc27f, 0 0 10px #ff8c4266; }
+      32% { background: #ffd93d; color: #3a2d00; box-shadow: inset 0 0 0 1px #ffe98e, 0 0 10px #ffd93d66; }
+      48% { background: #3ddc97; color: #effff7; box-shadow: inset 0 0 0 1px #8af0c0, 0 0 10px #3ddc9766; }
+      64% { background: #38bdf8; color: #eef9ff; box-shadow: inset 0 0 0 1px #87d7fb, 0 0 10px #38bdf866; }
+      80% { background: #8b5cf6; color: #f7f1ff; box-shadow: inset 0 0 0 1px #b79af9, 0 0 10px #8b5cf666; }
+      100% { background: #ec4899; color: #fff0f8; box-shadow: inset 0 0 0 1px #f38bc0, 0 0 10px #ec489966; }
+    }
+
+    .end-screen {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: #07101ae9;
+      text-align: center;
+      padding: 20px;
+    }
+    .end-screen[hidden] { display: none; }
+    .end-symbol { font-size: 36px; color: var(--gold); font-weight: 900; }
+    .end-screen h2 { margin: 0; font-size: 26px; }
+    .end-screen p { margin: 0 0 8px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+
+    .message {
+      min-height: 44px;
+      padding: 11px 12px;
+      margin: 14px 0 0;
+      border: 1px solid #30465b;
+      border-radius: 10px;
+      color: #c9e9ee;
+      background: #132638;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .controls-wrap { margin-top: 17px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.9; }
+    kbd { padding: 2px 5px; background: #283750; border: 1px solid #40516c; border-radius: 5px; color: var(--ink); font: inherit; }
+    .dpad { display: grid; grid-template-columns: repeat(3, 53px); grid-template-rows: repeat(2, 49px); gap: 6px; }
+    .move-btn, .restart-btn {
+      appearance: none;
+      border: 1px solid #435575;
+      border-radius: 11px;
+      background: #263753;
+      color: #edf5ff;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: transform .1s, background .1s;
+    }
+    .move-btn { font-size: 22px; font-weight: 900; }
+    .move-btn:active, .restart-btn:active { transform: scale(.95); background: #315f67; }
+    .move-btn:hover, .restart-btn:hover { border-color: var(--accent); }
+    .move-btn:focus-visible, .restart-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .move-btn:disabled { opacity: .35; cursor: not-allowed; }
+    .up { grid-column: 2; grid-row: 1; }
+    .left { grid-column: 1; grid-row: 2; }
+    .down { grid-column: 2; grid-row: 2; }
+    .right { grid-column: 3; grid-row: 2; }
+    .restart-btn { min-height: 40px; padding: 9px 16px; font-weight: 800; font-size: 13px; }
+    .restart-btn.primary { background: #1d6158; border-color: #54aa95; }
+    .legend { display: grid; gap: 13px; margin: 0; }
+    .legend-row { display: flex; align-items: center; gap: 12px; font-size: 13px; color: #dce5f4; }
+    .legend-glyph { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; font-size: 18px; font-weight: 900; }
+    .legend-glyph.p { background: #144940; color: #92ffe1; }
+    .legend-glyph.w { background: #293951; color: #8a9dbc; }
+    .legend-glyph.e { background: #542437; color: #ff9bad; }
+    .legend-glyph.s { background: #164760; color: #8beeff; }
+    .legend-glyph.v { background: #37365c; color: #d6c5ff; }
+    .legend-glyph.x { background: #56451e; color: #ffe08b; }
+    .legend-glyph.f { background: #0e1626; color: #61708b; }
+    .instructions { margin: 0; padding-left: 19px; color: var(--muted); font-size: 12px; line-height: 2; }
+    .log { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+    .log li { padding-left: 10px; border-left: 2px solid #3d526e; color: #bfcde1; font-size: 12px; line-height: 1.6; }
+    .log li.important { border-color: var(--gold); color: #ffe4a1; }
+    .footer { margin-top: 19px; color: #6f819e; font-size: 11px; text-align: center; }
+
+    @media (max-width: 780px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .side-panel:last-child { grid-column: 1 / -1; }
+    }
+    @media (max-width: 480px) {
+      :root { --cell: clamp(13px, 3.9vw, 18px); }
+      body { padding: 17px 12px 28px; }
+      .game-panel, .side-panel { padding: 14px; }
+      .sidebar { grid-template-columns: 1fr; }
+      .side-panel:last-child { grid-column: auto; }
+      .board-outer { padding: 12px 2px; }
+      .controls-wrap { grid-template-columns: 1fr; justify-items: center; }
+      .hint { text-align: center; }
+      .dpad { grid-template-columns: repeat(3, 62px); grid-template-rows: repeat(2, 51px); }
+      .stat { padding: 10px 7px; }
+      .stat-value { font-size: 15px; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <p class="eyebrow">ASCII QUEST / THREE FLOORS</p>
+    <h1>文字地下城</h1>
+    <p class="subtitle">一步一回合，探索三層地下城。踏入 <strong>v</strong> 前往下一層，第三層抵達 <strong>&gt;</strong> 才能獲勝。</p>
+
+    <div class="layout">
+      <section class="panel game-panel" aria-labelledby="game-heading">
+        <div class="section-head">
+          <h2 class="section-title" id="game-heading">迷宮地圖</h2>
+          <span class="small-tag" id="game-state">冒險中 · 第 1 / 3 層</span>
+        </div>
+
+        <div class="stats" aria-label="遊戲狀態">
+          <div class="stat" id="hp-stat"><span class="stat-label">生命值</span><span class="stat-value health" id="hp">♥♥♥♥</span><span class="hp-counter" id="hp-count">4 / 4</span></div>
+          <div class="stat"><span class="stat-label">行動回合</span><span class="stat-value" id="turn">0</span></div>
+          <div class="stat"><span class="stat-label">剩餘敵人</span><span class="stat-value" id="enemies">4</span></div>
+          <div class="stat"><span class="stat-label">目前樓層</span><span class="stat-value" id="floor-value">1 / 3</span></div>
+        </div>
+
+        <div class="floor-progress" id="floor-progress" aria-label="目前闖關進度">
+          <span class="floor-dot active">第 1 層</span>
+          <span class="floor-dot">第 2 層</span>
+          <span class="floor-dot">第 3 層</span>
+        </div>
+
+        <div class="board-outer">
+          <div class="board" id="board" role="img" aria-label="地下城遊戲地圖，使用方向鍵或方向按鈕移動"></div>
+          <div class="end-screen" id="end-screen" hidden>
+            <div class="end-symbol" id="end-symbol">★</div>
+            <h2 id="end-title">冒險完成！</h2>
+            <p id="end-description"></p>
+            <button type="button" class="restart-btn primary" id="play-again">再玩一次 ↻</button>
+          </div>
+        </div>
+
+        <p class="message" id="message" role="status" aria-live="polite">準備出發！經過三層地下城，尋找泉水 ~ 恢復 HP。</p>
+
+        <div class="controls-wrap">
+          <div class="hint">電腦：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或方向鍵<br />手機：點擊右側／下方方向按鈕<br />撞牆不消耗回合；攻擊敵人需兩次。<br />泉水 ~ 可補滿生命，使用後會消失。</div>
+          <div class="dpad" aria-label="觸控方向控制">
+            <button type="button" class="move-btn up" data-dir="up" aria-label="向上移動">↑</button>
+            <button type="button" class="move-btn left" data-dir="left" aria-label="向左移動">←</button>
+            <button type="button" class="move-btn down" data-dir="down" aria-label="向下移動">↓</button>
+            <button type="button" class="move-btn right" data-dir="right" aria-label="向右移動">→</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sidebar">
+        <section class="panel side-panel">
+          <div class="section-head"><h2 class="section-title">地圖圖例</h2></div>
+          <div class="legend">
+            <div class="legend-row"><span class="legend-glyph p">@</span><span>冒險者（你）</span></div>
+            <div class="legend-row"><span class="legend-glyph w">#</span><span>石牆（不可穿越）</span></div>
+            <div class="legend-row"><span class="legend-glyph e">G</span><span>哥布林（2 點生命）</span></div>
+            <div class="legend-row"><span class="legend-glyph s">~</span><span>治療泉水（受傷時補滿 HP）</span></div>
+            <div class="legend-row"><span class="legend-glyph v">v</span><span>樓梯（前往下一層）</span></div>
+            <div class="legend-row"><span class="legend-glyph x">&gt;</span><span>第三層出口（通關）</span></div>
+            <div class="legend-row"><span class="legend-glyph f">·</span><span>可通行地板</span></div>
+          </div>
+        </section>
+
+        <section class="panel side-panel">
+          <div class="section-head"><h2 class="section-title">冒險規則</h2></div>
+          <ol class="instructions">
+            <li>每次移動或攻擊算一回合。</li>
+            <li>敵人在你行動後才會行動。</li>
+            <li>攻擊哥布林 2 次才能擊敗它。</li>
+            <li>敵人會追蹤你；在其回合與你相鄰，就會扣 1 點生命。</li>
+            <li>共有 3 層，敵人隨樓層增加；進下一層保留 HP 與總回合數。</li>
+            <li>每層有 2 處泉水 ~；受傷時踩上去，依缺少的 HP 補滿至 4/4。泉水只能使用一次，滿血時不消耗。</li>
+            <li>前兩層走到 v 前往下一層；第三層到達 &gt; 獲勝，HP 歸零則失敗。</li>
+          </ol>
+          <button type="button" class="restart-btn" id="restart" style="margin-top: 15px; width: 100%;">重新開始（R） ↻</button>
+        </section>
+
+        <section class="panel side-panel">
+          <div class="section-head"><h2 class="section-title">冒險紀錄</h2></div>
+          <ul class="log" id="log" aria-live="off"></ul>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">純 HTML + CSS + JavaScript · 不需要網路或額外套件</div>
+  </main>
+
+  <script>
+    "use strict";
+
+    // # 牆、. 地板、@ 玩家、G 敵人、~ 泉水、v 下一層樓梯、> 最終出口。
+    // 三層地圖固定為 17 × 13；迷宮中要有唯一的出生點與樓梯／出口。
+    const LEVELS = [
+      {
+        name: "第一層｜石牆入口",
+        layout: [
+          "#################",
+          "#@....#..~...G..#",
+          "#.###.#.#####.#.#",
+          "#...#...#.....#.#",
+          "###.#####.###.#.#",
+          "#...#...#...#...#",
+          "#.###.#.###.###.#",
+          "#.....#...#....~#",
+          "#.#######.#.###G#",
+          "#..G....#...#...#",
+          "#.#####.###.#.#.#",
+          "#......G......#v#",
+          "#################"
+        ]
+      },
+      {
+        name: "第二層｜迴廊迷宮",
+        layout: [
+          "#################",
+          "#@#...........#.#",
+          "#.#.###.#####.#.#",
+          "#.#.#....G....#.#",
+          "#.#.#.#.#.#####.#",
+          "#.#.#.#.#...#...#",
+          "#.#.#.#.###.#.#.#",
+          "#.#...#...#.#..G#",
+          "#.###.###...~G#.#",
+          "#.G.#...#.#...#.#",
+          "##..#####.#####.#",
+          "#..~....G.#....v#",
+          "#################"
+        ]
+      },
+      {
+        name: "第三層｜深淵出口",
+        layout: [
+          "#################",
+          "#@..#.......#...#",
+          "###.#G#.#.#.##..#",
+          "#.G.#.#...#.#...#",
+          "#.###.#####G#.#.#",
+          "#....~#..G#.#.#.#",
+          "#.#.#####.#.#...#",
+          "#...#.....#~..#G#",
+          "#####.#.#######.#",
+          "#.#...#......G..#",
+          "#.#.#####.#.###.#",
+          "#.......#......>#",
+          "#################"
+        ]
+      }
+    ];
+    const MAX_HP = 4;
+    const ENEMY_HP = 2;
+    const CHASE_DISTANCE = 10;
+    const DIRECTIONS = {
+      up: { dx: 0, dy: -1, name: "上" },
+      down: { dx: 0, dy: 1, name: "下" },
+      left: { dx: -1, dy: 0, name: "左" },
+      right: { dx: 1, dy: 0, name: "右" }
+    };
+    const PATH_ORDER = [DIRECTIONS.up, DIRECTIONS.left, DIRECTIONS.right, DIRECTIONS.down];
+    const KEY_DIRECTIONS = {
+      w: "up", arrowup: "up",
+      a: "left", arrowleft: "left",
+      s: "down", arrowdown: "down",
+      d: "right", arrowright: "right"
+    };
+
+    const boardEl = document.getElementById("board");
+    const hpEl = document.getElementById("hp");
+    const hpCountEl = document.getElementById("hp-count");
+    const hpStatEl = document.getElementById("hp-stat");
+    const turnEl = document.getElementById("turn");
+    const enemiesEl = document.getElementById("enemies");
+    const floorValueEl = document.getElementById("floor-value");
+    const floorProgressEl = document.getElementById("floor-progress");
+    const messageEl = document.getElementById("message");
+    const logEl = document.getElementById("log");
+    const gameStateEl = document.getElementById("game-state");
+    const endScreenEl = document.getElementById("end-screen");
+    const moveButtons = document.querySelectorAll("[data-dir]");
+    let game;
+
+    function parseLevel(config, index) {
+      const map = [];
+      const enemies = [];
+      let start = null;
+      let goal = null;
+      let starts = 0;
+      let goals = 0;
+      let springs = 0;
+      const goalSymbol = index === LEVELS.length - 1 ? ">" : "v";
+      const width = config.layout[0].length;
+
+      config.layout.forEach((line, y) => {
+        if (line.length !== width) throw new Error(`第 ${index + 1} 層地圖列長不一致`);
+        const row = [];
+        [...line].forEach((symbol, x) => {
+          if (!"#.@G~v>".includes(symbol)) throw new Error(`地圖出現未知符號 ${symbol}`);
+          if (symbol === "@") { start = { x, y }; starts++; }
+          if (symbol === "G") enemies.push({ x, y, hp: ENEMY_HP, alive: true });
+          if (symbol === "~") springs++;
+          if (symbol === goalSymbol) { goal = { x, y }; goals++; }
+          row.push("#~v>".includes(symbol) ? symbol : ".");
+        });
+        map.push(row);
+      });
+      if (starts !== 1 || goals !== 1 || springs < 1) {
+        throw new Error(`第 ${index + 1} 層必須有 1 個 @、1 個 ${goalSymbol} 和至少 1 處泉水`);
+      }
+      // 確保樓梯與每一處泉水的路徑不被牆完全封住（忽略可擊敗的敵人）。
+      const reachable = new Set([`${start.x},${start.y}`]);
+      const queue = [start];
+      for (let head = 0; head < queue.length; head++) {
+        const { x, y } = queue[head];
+        for (const direction of PATH_ORDER) {
+          const nx = x + direction.dx;
+          const ny = y + direction.dy;
+          const key = `${nx},${ny}`;
+          if (ny < 0 || ny >= map.length || nx < 0 || nx >= width ||
+              map[ny][nx] === "#" || reachable.has(key)) continue;
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+      if (!reachable.has(`${goal.x},${goal.y}`)) {
+        throw new Error(`第 ${index + 1} 層的樓梯／出口無法抵達`);
+      }
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < width; x++) {
+          if (map[y][x] === "~" && !reachable.has(`${x},${y}`)) {
+            throw new Error(`第 ${index + 1} 層存在無法抵達的泉水`);
+          }
+        }
+      }
+      return { name: config.name, map, enemies, start, goal };
+    }
+
+    function currentLevel() { return game.floors[game.floorIndex]; }
+
+    function startGame() {
+      const floors = LEVELS.map(parseLevel);
+      game = {
+        floors,
+        floorIndex: 0,
+        player: { ...floors[0].start },
+        hp: MAX_HP,
+        hpChange: 0,
+        turn: 0,
+        status: "playing",
+        message: "準備出發！踏上 v 進入下一層，泉水 ~ 能回滿生命。",
+        logs: [{ text: "冒險開始！一共有三層地下城。", important: true }]
+      };
+      render();
+    }
+
+    function enemyAt(x, y) {
+      return currentLevel().enemies.find(enemy => enemy.alive && enemy.x === x && enemy.y === y);
+    }
+
+    function walkable(x, y) {
+      const map = currentLevel().map;
+      return y >= 0 && y < map.length && x >= 0 && x < map[0].length && map[y][x] !== "#";
+    }
+
+    function addLog(text, important = false) {
+      game.logs.unshift({ text, important });
+      game.logs = game.logs.slice(0, 7);
+    }
+
+    function isAdjacent(a, b) {
+      return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+    }
+
+    // 使用 BFS 找敵人通往玩家的下一步；無法穿牆、穿過其他敵人或占住特殊格子。
+    function findStepTowardPlayer(enemy) {
+      const queue = [{ x: enemy.x, y: enemy.y, distance: 0, first: null }];
+      const visited = new Set([`${enemy.x},${enemy.y}`]);
+      const map = currentLevel().map;
+      for (let head = 0; head < queue.length; head++) {
+        const current = queue[head];
+        if (current.x === game.player.x && current.y === game.player.y) {
+          return { distance: current.distance, step: current.first };
+        }
+        if (current.distance >= CHASE_DISTANCE) continue;
+        for (const direction of PATH_ORDER) {
+          const x = current.x + direction.dx;
+          const y = current.y + direction.dy;
+          const key = `${x},${y}`;
+          const onPlayer = x === game.player.x && y === game.player.y;
+          if (!walkable(x, y) || visited.has(key) ||
+              (!onPlayer && (enemyAt(x, y) || map[y][x] === "v" || map[y][x] === ">"))) continue;
+          visited.add(key);
+          queue.push({ x, y, distance: current.distance + 1,
+            first: current.first || { x, y } });
+        }
+      }
+      return null;
+    }
+
+    function enemyTurn(events) {
+      let damage = 0;
+      for (const enemy of currentLevel().enemies) {
+        if (!enemy.alive || game.status !== "playing") continue;
+        if (isAdjacent(enemy, game.player)) {
+          game.hp = Math.max(0, game.hp - 1);
+          damage++;
+          if (game.hp === 0) { game.status = "lost"; break; }
+          continue;
+        }
+        const route = findStepTowardPlayer(enemy);
+        if (route && route.distance > 1 && route.step) {
+          enemy.x = route.step.x;
+          enemy.y = route.step.y;
+        }
+      }
+      if (damage > 0) {
+        events.push(`遭到敵人攻擊，損失 ${damage} HP！目前 HP ${game.hp}/${MAX_HP}。`);
+        addLog(`第 ${game.turn} 回合：受到 ${damage} 點傷害。`, true);
+      }
+      if (game.status === "lost") {
+        events.push("生命歸零，挑戰失敗！");
+        addLog(`第 ${game.turn} 回合：倒在第 ${game.floorIndex + 1} 層。`, true);
+      }
+    }
+
+    function useFountain(events) {
+      const level = currentLevel();
+      const { x, y } = game.player;
+      if (level.map[y][x] !== "~") return;
+      const missing = MAX_HP - game.hp;
+      if (missing === 0) {
+        events.push("發現治療泉水 ~，但生命已滿，泉水保留可供之後使用。");
+        return;
+      }
+      game.hp = MAX_HP;
+      level.map[y][x] = "."; // 每處泉水只能使用一次，滿血不會浪費泉水。
+      events.push(`喝下治療泉水！恢復 ${missing} HP，目前 ${game.hp}/${MAX_HP}。`);
+      addLog(`第 ${game.turn} 回合：使用泉水，恢復 ${missing} HP。`, true);
+    }
+
+    function move(directionName) {
+      if (game.status !== "playing") return;
+      const direction = DIRECTIONS[directionName];
+      if (!direction) return;
+      const nx = game.player.x + direction.dx;
+      const ny = game.player.y + direction.dy;
+      if (!walkable(nx, ny)) {
+        game.message = "前方是石牆 #，無法通過！（不消耗回合）";
+        render();
+        return;
+      }
+
+      const previousHp = game.hp;
+      game.turn++;
+      const events = [];
+      let enteredNextFloor = false;
+      const enemy = enemyAt(nx, ny);
+      if (enemy) {
+        enemy.hp--;
+        if (enemy.hp <= 0) {
+          enemy.alive = false;
+          game.player = { x: nx, y: ny };
+          events.push("擊敗哥布林 G，前進一格！");
+          addLog(`第 ${game.turn} 回合：擊敗哥布林！`, true);
+          // 敵人原本若站在泉水上，擊敗並踏入後也必須觸發治療。
+          useFountain(events);
+        } else {
+          events.push(`擊中了哥布林！敵人剩餘 ${enemy.hp} HP。`);
+          addLog(`第 ${game.turn} 回合：擊中哥布林，剩下 ${enemy.hp} HP。`);
+        }
+      } else {
+        game.player = { x: nx, y: ny };
+        const symbol = currentLevel().map[ny][nx];
+        if (symbol === "v") {
+          game.floorIndex++;
+          game.player = { ...currentLevel().start };
+          enteredNextFloor = true;
+          events.push(`進入第 ${game.floorIndex + 1} / ${LEVELS.length} 層「${currentLevel().name}」！HP 保持 ${game.hp}/${MAX_HP}。`);
+          addLog(`第 ${game.turn} 回合：抵達第 ${game.floorIndex + 1} 層。`, true);
+        } else if (symbol === ">") {
+          game.status = "won";
+          events.push(`成功穿越三層地下城！共花 ${game.turn} 回合，剩餘 ${game.hp} HP。`);
+          addLog(`第 ${game.turn} 回合：抵達最終出口，通關成功！`, true);
+        } else if (symbol === "~") {
+          useFountain(events);
+        } else {
+          events.push(`往${direction.name}移動了一格。`);
+        }
+      }
+
+      if (game.status === "playing" && !enteredNextFloor) enemyTurn(events);
+      game.hpChange = game.hp - previousHp;
+      game.message = events.join(" ");
+      render();
+    }
+
+    function render() {
+      const level = currentLevel();
+      const fragment = document.createDocumentFragment();
+      let remaining = 0;
+      for (const enemy of level.enemies) if (enemy.alive) remaining++;
+
+      level.map.forEach((row, y) => {
+        row.forEach((base, x) => {
+          const tile = document.createElement("span");
+          tile.className = "tile";
+          tile.setAttribute("aria-hidden", "true");
+          let symbol = "·";
+          let type = "floor";
+          if (base === "#") { symbol = "#"; type = "wall"; }
+          if (base === "v") { symbol = "v"; type = "stairs"; }
+          if (base === ">") { symbol = ">"; type = "exit"; }
+          if (base === "~") { symbol = "~"; type = "spring"; }
+          if (enemyAt(x, y)) { symbol = "G"; type = "enemy"; }
+          if (game.player.x === x && game.player.y === y) { symbol = "@"; type = "player"; }
+          tile.classList.add(type);
+          tile.textContent = symbol;
+          fragment.appendChild(tile);
+        });
+      });
+      boardEl.replaceChildren(fragment);
+      boardEl.setAttribute("aria-label", `${level.name}；玩家生命 ${game.hp}/${MAX_HP}；地圖包含牆、敵人、泉水與樓梯或出口`);
+      hpEl.textContent = "♥".repeat(game.hp) + "♡".repeat(MAX_HP - game.hp);
+      hpCountEl.textContent = `${game.hp} / ${MAX_HP}`;
+      hpStatEl.classList.toggle("hurt", game.hpChange < 0);
+      hpStatEl.classList.toggle("healed", game.hpChange > 0);
+      hpEl.setAttribute("aria-label", `剩餘生命 ${game.hp}，最多 ${MAX_HP}`);
+      turnEl.textContent = String(game.turn);
+      enemiesEl.textContent = String(remaining);
+      floorValueEl.textContent = `${game.floorIndex + 1} / ${LEVELS.length}`;
+      messageEl.textContent = game.message;
+      gameStateEl.textContent = game.status === "won" ? "三層通關成功" :
+        game.status === "lost" ? "挑戰失敗" : `冒險中 · 第 ${game.floorIndex + 1} / ${LEVELS.length} 層`;
+      [...floorProgressEl.children].forEach((dot, index) => {
+        dot.classList.toggle("active", index === game.floorIndex);
+        dot.classList.toggle("done", index < game.floorIndex || game.status === "won");
+      });
+      moveButtons.forEach(button => { button.disabled = game.status !== "playing"; });
+
+      logEl.replaceChildren();
+      game.logs.forEach(item => {
+        const li = document.createElement("li");
+        li.textContent = item.text;
+        if (item.important) li.className = "important";
+        logEl.appendChild(li);
+      });
+
+      const finished = game.status !== "playing";
+      endScreenEl.hidden = !finished;
+      if (finished) {
+        document.getElementById("end-symbol").textContent = game.status === "won" ? "★" : "×";
+        document.getElementById("end-title").textContent = game.status === "won" ? "三層通關成功！" : "冒險失敗";
+        document.getElementById("end-description").textContent = game.status === "won"
+          ? `你用了 ${game.turn} 回合走出全部三層地下城，還剩 ${game.hp} HP。`
+          : `你在第 ${game.floorIndex + 1} 層倒下，堅持了 ${game.turn} 回合。再挑戰一次吧！`;
+      }
+    }
+
+    // 鍵盤：WASD、方向鍵移動；R 重新開始。
+    window.addEventListener("keydown", event => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const key = event.key.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(KEY_DIRECTIONS, key)) {
+        event.preventDefault();
+        move(KEY_DIRECTIONS[key]);
+      } else if (key === "r") {
+        event.preventDefault();
+        startGame();
+      }
+    });
+
+    // 手機觸控與滑鼠共用 click 事件。
+    moveButtons.forEach(button => {
+      button.addEventListener("click", () => move(button.dataset.dir));
+    });
+    document.getElementById("restart").addEventListener("click", startGame);
+    document.getElementById("play-again").addEventListener("click", startGame);
+
+    startGame();
+  </script>
+</body>
+</html>
